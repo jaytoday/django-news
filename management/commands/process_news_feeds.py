@@ -40,10 +40,11 @@ class Command(NoArgsCommand):
         """
         total_start = time.time()
         
-        for feed in Feed.objects.all():
+        for feed in Feed.objects.filter(active=True):
             start = time.time()
             print "Downloading: %s..." % feed.url,
             feed.download_feed()
+            print "%d new articles" % feed.new_articles_added
             end = time.time()
             
         total_end = time.time()

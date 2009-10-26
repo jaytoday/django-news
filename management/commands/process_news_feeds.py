@@ -13,30 +13,7 @@ class Command(NoArgsCommand):
     @locking
     def handle_noargs(self, **options):
         """
-        Update the database with new tweets from various sources
-        
-        1. Users
-            - Staff accounts can be configured in the admin and these
-            will be updated every time the command is run.
-            - In some instances, a non-staff account may need to be updated,
-            if for instance, that account is a part of a "TwitterGroup".  In
-            these cases, the account's user stream will be updated if one of
-            the following is true:
-                - It has been requested and was last updated some time before
-                  now() - cache_timeout (default is 10 minutes ago)
-                - The last time it was fetched there were several new tweets,
-                  indicating this is an active stream (TWITTER_NEW_TWEETS_THRESHOLD)
-        2. Searches
-            - Searches are configured in the admin and are updated similarly
-            to Users.  If a search is flagged to update continuously (i.e. #lawrence)
-            it will update every time the command is run.
-            - For other searches, which may be more time-sensitive (related to a news
-            item and included as a story inline), the search results will be updated
-            the same way Users are:
-                - It has been requested and was last updated some time before
-                  now() - cache_timeout (default is 10 minutes ago)
-                - The last time it was fetched there were several new tweets,
-                  indicating this is an active search (TWITTER_NEW_TWEETS_THRESHOLD)
+        Update the database with articles
         """
         total_start = time.time()
         

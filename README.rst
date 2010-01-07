@@ -15,7 +15,11 @@ somewhere on your Python path.
 
 Add ``news`` to your project's ``settings.py`` file.
 
-Dependancies
+Dependencies
 ============
 
-* feedparser
+* feedparser http://www.feedparser.org/
+
+Check it out
+============
+http://www.charlesleifer.com/news/

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from djangonews.models import Source, Category, Feed, Article, WhiteListFilter, FeedCategoryRelationship
+from news.models import Source, Category, Feed, Article, WhiteListFilter, FeedCategoryRelationship
 
 class FeedCategoryRelationshipInline(admin.TabularInline):
     model = FeedCategoryRelationship

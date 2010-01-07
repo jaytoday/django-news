@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.views.generic.list_detail import object_list
 from django.shortcuts import get_object_or_404
-from djangonews.models import Category, Article
+from news.models import Category, Article
 
 NEWS_ARTICLE_PAGINATION = getattr(settings, 'NEWS_ARTICLE_PAGINATION', 10)
 

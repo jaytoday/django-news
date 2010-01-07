@@ -6,8 +6,8 @@ from optparse import make_option
 from django.conf import settings
 from django.core.management.base import NoArgsCommand
 from django.db.models import Q
-from djangonews.decorators import locking
-from djangonews.models import Feed
+from news.decorators import locking
+from news.models import Feed
 
 class Command(NoArgsCommand):
     help = "Can be run as a cronjob or directly to download RSS feeds."

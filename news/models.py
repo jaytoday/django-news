@@ -6,8 +6,10 @@ import re
 from django.conf import settings
 from django.db import models
 
+# blocked html takes a list of tag names, i.e. ['script', 'img', 'embed']
 BLOCKED_HTML = getattr(settings, 'NEWS_BLOCKED_HTML', [])
-BLOCKED_REGEX = re.compile(r'<(%s)[^>]*(/>|.*?</\1>)' % ('|'.join(BLOCKED_HTML)), re.DOTALL | re.IGNORECASE)
+BLOCKED_REGEX = re.compile(r'<(%s)[^>]*(/>|.*?</\1>)' % ('|'.join(BLOCKED_HTML)), 
+                           re.DOTALL | re.IGNORECASE)
 
 class Source(models.Model):
     name = models.CharField(max_length=255)
@@ -23,7 +25,7 @@ class Source(models.Model):
 
 class WhiteListFilter(models.Model):
     name = models.CharField(max_length=50)
-    keywords = models.TextField(help_text="Comma separated list of keywords to check")
+    keywords = models.TextField(help_text="Comma separated list of keywords")
     
     class Meta:
         ordering = ('name',)
@@ -36,6 +38,10 @@ class Category(models.Model):
     slug = models.SlugField(unique=True)
     parent = models.ForeignKey('self', null=True, blank=True, default=None,
         related_name='children', verbose_name='Parent')
+    
+    # allow categories to include articles from other categories
+    include_categories = models.ManyToManyField('self', symmetrical=False,
+        through='CategoryRelationship', related_name='including_categories')
     
     # cached field, updated on save
     url_path = models.CharField(max_length=255, editable=False, db_index=True)
@@ -50,6 +56,7 @@ class Category(models.Model):
     
     def save(self, *args, **kwargs):
         if self.parent:
+            # denormalize a path to this category and store its depth
             self.level = self.parent.level + 1
             url_path = '%s%s/' % (self.parent.url_path, self.slug)
         else:
@@ -59,11 +66,8 @@ class Category(models.Model):
         self.url_path = url_path
         
         super(Category, self).save(*args, **kwargs)
-                
-        Category.objects.filter(pk=self.pk).update(
-            url_path=self.url_path
-        )
         
+        # update all subcategories in case the url_path changed
         if self.children:
             def update_children(children):
                 for child in children:
@@ -76,13 +80,29 @@ class Category(models.Model):
     def get_absolute_url(self):
         return ('news_article_index', None, { 'url_path': self.url_path })
 
+
+class CategoryRelationship(models.Model):
+    """
+    Allow a category to include articles from other categories, optionally
+    filtering the incoming articles with a white-list.  This operation happens
+    when a feed is downloaded, and so only applies to articles going forward
+    from the time the relationship is established.
+    """
+    category = models.ForeignKey(Category, related_name='categories')
+    included_category = models.ForeignKey(Category, 
+        related_name='included_categories')
+    white_list = models.ManyToManyField(WhiteListFilter, blank=True)
+    
+
 class Feed(models.Model):
     name = models.CharField(max_length=255)
     url = models.URLField()
-    categories = models.ManyToManyField(Category, through='FeedCategoryRelationship')
+    categories = models.ManyToManyField(Category, 
+        through='FeedCategoryRelationship')
     source = models.ForeignKey(Source)
     last_download = models.DateField(auto_now=True)
-    new_articles_added = models.PositiveSmallIntegerField(default=0, editable=False)
+    new_articles_added = models.PositiveSmallIntegerField(default=0, 
+        editable=False)
     active = models.BooleanField(default=True)
     
     class Meta:
@@ -99,15 +119,17 @@ class Feed(models.Model):
         
         new_articles_added = 0
         
+        # iterate over the entries returned by the feed
         for entry in data.entries:
-            entry.title = re.sub('<[^>]*>', '', entry.title) # remove all tags from title
+            # remove all HTML from the title and clean up the data
+            entry.title = re.sub('<[^>]*>', '', entry.title)
             headline = entry.title.encode(data.encoding, "xmlcharrefreplace")
             guid = entry.get("id", entry.link).encode(data.encoding, "xmlcharrefreplace")
             url = entry.link.encode(data.encoding, "xmlcharrefreplace")
-
+            
             if not guid:
                 guid = url
-
+            
             try:
                 article = Article.objects.get(guid=guid, feed=self)
             except Article.DoesNotExist:
@@ -120,7 +142,7 @@ class Feed(models.Model):
                 else:
                     content = u""
                 content = content.encode(data.encoding, "xmlcharrefreplace")
-
+                
                 try:
                     pubdate = None
                     attrs = ['updated_parsed', 'published_parsed', 'date_parsed', 'created_parsed']
@@ -142,6 +164,8 @@ class Feed(models.Model):
                 except TypeError:
                     date_modified = datetime.datetime.now()
                 
+                # note: the article is not getting saved yet - only save those
+                # articles that will go into at least one category
                 article = Article(
                     feed=self,
                     headline=headline, 
@@ -150,11 +174,14 @@ class Feed(models.Model):
                     guid=guid, 
                     publish=date_modified
                 )
-                
+            
+            # what categories will this article get added to?    
             add_to_categories = []
             
+            # iterate over the categories associated with this feed
             for category in self.categories.all():
-                relationship_queryset = FeedCategoryRelationship.objects.filter(feed=self, category=category)
+                relationship_queryset = FeedCategoryRelationship.objects.filter(
+                    feed=self, category=category)
                 article_passes = True
                 
                 for relationship in relationship_queryset.all():
@@ -172,11 +199,30 @@ class Feed(models.Model):
                     
                 if article_passes:
                     add_to_categories.append(category)
-                
+            
             if len(add_to_categories) > 0:
                 if not article.pk:
                     new_articles_added += 1
                 article.save()
+                
+                # now check the categories we're adding the article to, and see
+                # if any other categories include them - if so, make sure the
+                # article passes any white-lists and add the article to the
+                # included categories as well
+                for category in add_to_categories:
+                    for category_relationship in CategoryRelationship.objects.filter(included_category=category):
+                        article_passes = True
+                        whitelist = []
+                        for white_list in category_relationship.white_list.all():
+                            whitelist += white_list.keywords.split(',')
+                        
+                        if whitelist:
+                            if not re.search(re.compile(r'(%s)' % '|'.join([s.strip() for s in whitelist if s.strip()]), re.IGNORECASE), article.headline):
+                                article_passes = False
+                                break
+                        
+                        add_to_categories.append(category_relationship.category)
+                
                 article.categories = add_to_categories
                 article.save()
         

@@ -1,15 +1,20 @@
 from django.contrib import admin
-from news.models import Source, Category, Feed, Article, WhiteListFilter, FeedCategoryRelationship
+from news.models import Source, Category, Feed, Article, WhiteListFilter, FeedCategoryRelationship, CategoryRelationship
 
 class FeedCategoryRelationshipInline(admin.TabularInline):
     model = FeedCategoryRelationship
+    extra = 1
+
+class CategoryRelationshipInline(admin.TabularInline):
+    model = CategoryRelationship
+    fk_name = 'category'
     extra = 1
 
 class FeedAdmin(admin.ModelAdmin):
     inlines = (FeedCategoryRelationshipInline,)
 
 class CategoryAdmin(admin.ModelAdmin):
-    inlines = (FeedCategoryRelationshipInline,)
+    inlines = (FeedCategoryRelationshipInline, CategoryRelationshipInline)
     prepopulated_fields = { "slug": ("name",) }
 
 class ArticleAdmin(admin.ModelAdmin):

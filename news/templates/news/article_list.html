@@ -8,7 +8,7 @@
     <div>
       <h3 class="title"><a href="{{ article.get_absolute_url }}">{{ article.headline }}</a></h3>
       <p class="date">{{ article.pub_date|date:"Y F d" }}</p>
-      <p class="tease">{{ article.content }}</p>
+      <p class="tease">{{ article.content|safe }}</p>
     </div>
     {% endfor %}
   </div>

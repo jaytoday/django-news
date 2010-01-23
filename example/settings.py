@@ -1,4 +1,5 @@
 # Django settings for example project.
+# admin access using example/example
 import os
 
 DEBUG = True

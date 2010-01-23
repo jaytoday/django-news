@@ -7,7 +7,7 @@ from django.conf import settings
 from django.core.management.base import NoArgsCommand
 from django.db.models import Q
 from news.decorators import locking
-from news.models import Feed
+from news.models import Feed, Article
 
 class Command(NoArgsCommand):
     help = "Can be run as a cronjob or directly to download RSS feeds."
@@ -53,3 +53,6 @@ class Command(NoArgsCommand):
         total_end = time.time()
         logging.info("Finished processing %d feeds" % Feed.objects.filter(active=True).count())
         logging.info("%d new articles added in %f seconds" % (new_articles, total_end - total_start))
+        
+        expired_articles = Article.objects.expire_articles()
+        logging.info("Expired articles: %s" % expired_articles)

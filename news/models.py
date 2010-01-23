@@ -11,7 +11,14 @@ BLOCKED_HTML = getattr(settings, 'NEWS_BLOCKED_HTML', [])
 BLOCKED_REGEX = re.compile(r'<(%s)[^>]*(/>|.*?</\1>)' % ('|'.join(BLOCKED_HTML)), 
                            re.DOTALL | re.IGNORECASE)
 
+# number of days after which articles should be marked expired
+EXPIRE_ARTICLES = getattr(settings, 'EXPIRE_ARTICLES', True)
+EXPIRE_ARTICLES_DAYS = getattr(settings, 'EXPIRE_ARTICLES', 7)
+
 class Source(models.Model):
+    """
+    A source is a general news source, like CNN, who may provide multiple feeds.
+    """
     name = models.CharField(max_length=255)
     url = models.URLField()
     description = models.TextField(blank=True)
@@ -34,6 +41,16 @@ class WhiteListFilter(models.Model):
         return u'%s' % self.name
 
 class Category(models.Model):
+    """
+    Categories are populated by collections of feeds and/or other categories.
+    They can be configured in a heirarchy, like
+    
+    /news/sports/basketball/
+    
+    When feeds are processed, each feed checks to see what categories it can go
+    into, and additionally, what white-list filters to apply before adding the
+    articles to that category.
+    """
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
     parent = models.ForeignKey('self', null=True, blank=True, default=None,
@@ -95,6 +112,12 @@ class CategoryRelationship(models.Model):
     
 
 class Feed(models.Model):
+    """
+    A feed is the actual RSS/Atom feed that will be downloaded.  It has a
+    many-to-many relationship to categories through the FeedCategoryRelationship
+    model, which allows white-lists to be applied to the feed before articles
+    will be added to the category.
+    """
     name = models.CharField(max_length=255)
     url = models.URLField()
     categories = models.ManyToManyField(Category, 
@@ -113,6 +136,7 @@ class Feed(models.Model):
     
     def download_feed(self):
         try:
+            # download the feed data
             data = feedparser.parse(self.url)
         except:
             return False
@@ -131,7 +155,9 @@ class Feed(models.Model):
                 guid = url
             
             try:
-                article = Article.objects.get(guid=guid, feed=self)
+                article = Article.objects.get(
+                    models.Q(guid=guid, feed=self) |
+                    models.Q(headline__iexact=headline))
             except Article.DoesNotExist:
                 if hasattr(entry, "summary"):
                     content = entry.summary
@@ -235,6 +261,16 @@ class FeedCategoryRelationship(models.Model):
     category = models.ForeignKey(Category)
     white_list = models.ManyToManyField(WhiteListFilter, blank=True)
 
+
+class ArticleManager(models.Manager):
+    def expire_articles(self):
+        if EXPIRE_ARTICLES:
+            expire_date = datetime.datetime.now() - datetime.timedelta(
+                days=EXPIRE_ARTICLES_DAYS)
+            num_expired = self.filter(date_added__lt=expire_date).update(
+                expired=True)
+            return num_expired
+
 class Article(models.Model):
     headline = models.CharField(max_length=255)
     slug = models.SlugField()
@@ -242,9 +278,13 @@ class Article(models.Model):
     url = models.URLField()
     content = models.TextField()
     guid = models.CharField(max_length=255, blank=True, editable=False)
+    date_added = models.DateTimeField(auto_now_add=True)
+    expired = models.BooleanField(default=False)
     
     feed = models.ForeignKey(Feed, related_name='articles')
     categories = models.ManyToManyField(Category, related_name='articles')
+    
+    objects = ArticleManager()
     
     class Meta:
         ordering = ('-publish', 'headline')

@@ -6,18 +6,18 @@ from news.models import Category, Article
 NEWS_ARTICLE_PAGINATION = getattr(settings, 'NEWS_ARTICLE_PAGINATION', 10)
 
 def article_list(request, url_path='', template_name='news/article_list.html'):
-    extra_context = { 'categories': Category.objects.all() }
+    extra_context = {'categories': Category.objects.all()}
     
     if url_path != '':
         category = get_object_or_404(Category, url_path=url_path)
-        qs = category.articles.all()
-        extra_context.update({ 'category': category })
+        qs = category.articles.filter(expired=False)
+        extra_context.update({'category': category})
     else:
-        qs = Article.objects.all()
+        qs = Article.objects.filter(expired=False)
         
     if request.GET.get('q', None):
         qs = qs.filter(headline__icontains=request.GET['q'])
-        extra_context.update({ 'search_query': request.GET['q'] })
+        extra_context.update({'search_query': request.GET['q']})
         
     return object_list(
         request,
